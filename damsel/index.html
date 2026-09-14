@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Damsel — AI Reader</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.7.0/mammoth.browser.min.js"></script>
+<style>
+:root{
+  --ink:#101725; --panel:#19222F; --panel-2:#1F2A39; --rim:#2E3B4E;
+  --paper:#E9EEF6; --muted:#8E9DB4; --amber:#F2A33C; --teal:#37C6B2;
+  --blue:#6FA8FF; --violet:#B79BFF; --green:#7ED9A8; --red:#E5679A;
+  --radius:16px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%}
+body{
+  background:radial-gradient(1100px 620px at 78% -8%, rgba(242,163,60,.13), transparent 62%), var(--ink);
+  color:var(--paper); font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:15px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{font-family:"Bricolage Grotesque","IBM Plex Sans",sans-serif;margin:0;letter-spacing:-.02em}
+button{font:inherit;color:inherit;cursor:pointer}
+select,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+/* layout */
+.app{display:grid;grid-template-columns:260px 1fr 340px;height:100vh}
+@media (max-width:980px){.app{grid-template-columns:1fr;height:auto}}
+
+.side{background:var(--panel);border-right:1px solid var(--rim);padding:18px;overflow-y:auto}
+.side.right{border-right:none;border-left:1px solid var(--rim)}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+.brand__glyph{width:32px;height:32px;border-radius:9px;background:linear-gradient(150deg,var(--amber),#C97B1E);display:grid;place-items:center;color:#241503;flex:none}
+.brand__name{font-weight:800;font-size:1.15rem}
+
+.btn{border:1px solid var(--rim);background:var(--panel-2);color:var(--paper);padding:9px 14px;border-radius:10px;font-weight:600;font-size:.86rem;transition:.15s}
+.btn:hover{border-color:#43536B;background:#26334A}
+.btn--go{background:linear-gradient(160deg,#FFC978,var(--amber));color:#2A1A04;border-color:transparent}
+.btn--go:hover{background:linear-gradient(160deg,#FFD592,#F5AE4F)}
+.btn--sm{padding:6px 11px;font-size:.8rem}
+.btn--block{width:100%}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.section-title{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:18px 0 8px;font-weight:600}
+.section-title:first-child{margin-top:0}
+
+.doc-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:10px;cursor:pointer;font-size:.87rem;border:1px solid transparent}
+.doc-item:hover{background:var(--panel-2)}
+.doc-item.is-active{background:var(--panel-2);border-color:var(--rim)}
+.doc-item__name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc-item__del{color:var(--muted);flex:none;padding:2px 6px;border-radius:6px}
+.doc-item__del:hover{color:var(--red)}
+.empty-note{color:var(--muted);font-size:.85rem;padding:8px 2px}
+
+.hidden-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.drop{border:1.5px dashed var(--rim);border-radius:12px;padding:20px 12px;text-align:center;color:var(--muted);font-size:.85rem;cursor:pointer;transition:.15s}
+.drop:hover,.drop.is-over{border-color:var(--amber);color:var(--paper)}
+
+/* reader */
+.reader{display:flex;flex-direction:column;height:100vh;min-width:0}
+@media (max-width:980px){.reader{height:auto}}
+.reader__top{display:flex;align-items:center;gap:10px;padding:14px 22px;border-bottom:1px solid var(--rim);flex-wrap:wrap}
+.reader__title{font-weight:700;font-size:1rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reader__meta{color:var(--muted);font-size:.8rem}
+.reader__body{flex:1;overflow-y:auto;padding:34px 8vw;max-width:840px;margin:0 auto;width:100%}
+.reader__body p{margin:0 0 1.1em;font-size:1.02rem}
+.reader__placeholder{color:var(--muted);text-align:center;margin-top:18vh;font-size:.95rem}
+.reader__placeholder b{display:block;color:var(--paper);font-size:1.3rem;margin-bottom:8px;font-family:"Bricolage Grotesque",sans-serif}
+::selection{background:rgba(242,163,60,.35)}
+
+.toolbar{position:sticky;bottom:0;display:flex;gap:8px;flex-wrap:wrap;padding:12px 22px;border-top:1px solid var(--rim);background:rgba(25,34,47,.9);backdrop-filter:blur(6px)}
+
+/* right rail: AI companion */
+.ai-log{display:flex;flex-direction:column;gap:12px;margin-bottom:14px}
+.msg{padding:11px 13px;border-radius:12px;font-size:.87rem;line-height:1.5}
+.msg--user{background:var(--panel-2);border:1px solid var(--rim);margin-left:20px}
+.msg--ai{background:linear-gradient(180deg,rgba(242,163,60,.08),transparent);border:1px solid rgba(242,163,60,.25)}
+.msg--sys{color:var(--muted);font-size:.78rem;text-align:center}
+.msg__meta{color:var(--muted);font-size:.72rem;margin-bottom:4px}
+
+.ask-row{display:flex;gap:8px;margin-top:10px}
+.ask-row textarea{flex:1;resize:none;background:var(--panel-2);border:1px solid var(--rim);border-radius:10px;padding:9px 11px;color:var(--paper);min-height:40px;max-height:110px}
+
+.field{margin-bottom:12px}
+.field label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:5px}
+.field input,.field select{width:100%;background:var(--panel-2);border:1px solid var(--rim);border-radius:9px;padding:8px 10px;color:var(--paper)}
+
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:.7rem;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--rim);color:var(--muted)}
+.pill.ok{color:var(--green);border-color:rgba(126,217,168,.4)}
+.pill.warn{color:var(--amber);border-color:rgba(242,163,60,.4)}
+
+.modal{position:fixed;inset:0;z-index:50;display:none;place-items:center;background:rgba(8,11,17,.82);backdrop-filter:blur(6px);padding:5vh 5vw}
+.modal.is-open{display:grid}
+.modal__panel{background:var(--panel);border:1px solid var(--rim);border-radius:18px;padding:26px;width:min(560px,94vw);max-height:88vh;overflow-y:auto}
+.modal__head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.provider-row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.provider-row .field{flex:1;margin-bottom:0}
+.provider-row .pill{flex:none}
+
+.route-table{width:100%;border-collapse:collapse;font-size:.83rem;margin-top:6px}
+.route-table th,.route-table td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--rim)}
+.route-table select{width:100%}
+
+.toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,140%);background:var(--paper);color:#101725;font-weight:600;font-size:.87rem;padding:10px 18px;border-radius:11px;z-index:60;transition:transform .3s;pointer-events:none}
+.toast.is-up{transform:translate(-50%,0)}
+
+.spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.3);border-top-color:currentColor;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- LEFT: Library -->
+  <aside class="side">
+    <div class="brand">
+      <span class="brand__glyph" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      </span>
+      <span class="brand__name">Damsel</span>
+    </div>
+
+    <div class="drop" id="drop">
+      Drop a PDF, DOCX or TXT here<br>or <u>click to choose a file</u>
+    </div>
+    <input type="file" id="fileInput" class="hidden-input" accept=".pdf,.docx,.txt,.md">
+
+    <div class="section-title">Your library</div>
+    <div id="docList"><p class="empty-note">Nothing imported yet.</p></div>
+
+    <div class="section-title">Settings</div>
+    <button class="btn btn--block btn--sm" id="openSettings">API keys &amp; AI router</button>
+  </aside>
+
+  <!-- CENTER: Reader -->
+  <main class="reader">
+    <div class="reader__top">
+      <span class="reader__title" id="docTitle">No document open</span>
+      <span class="reader__meta" id="docMeta"></span>
+    </div>
+    <div class="reader__body" id="readerBody">
+      <div class="reader__placeholder">
+        <b>Nothing open yet</b>
+        Import a file on the left to start reading. Select any text to explain, translate, or hear it read aloud.
+      </div>
+    </div>
+    <div class="toolbar">
+      <button class="btn btn--sm" id="actSummarizePage">Summarize this page</button>
+      <button class="btn btn--sm" id="actSummarizeSelection" disabled>Explain selection</button>
+      <button class="btn btn--sm" id="actTranslateSelection" disabled>Translate selection</button>
+      <span style="flex:1"></span>
+      <select class="btn btn--sm" id="voiceSelect" style="padding-right:24px"></select>
+      <button class="btn btn--sm btn--go" id="actSpeak">▶ Read aloud</button>
+      <button class="btn btn--sm" id="actStop" style="display:none">■ Stop</button>
+    </div>
+  </main>
+
+  <!-- RIGHT: AI companion -->
+  <aside class="side right">
+    <div class="section-title">Damsel companion</div>
+    <div class="ai-log" id="aiLog">
+      <p class="msg msg--sys">Ask anything about the document you have open. Answers use whichever provider the AI Router picks for "Q&A" — set that up in Settings.</p>
+    </div>
+    <div class="ask-row">
+      <textarea id="askInput" placeholder="Ask about this document…"></textarea>
+      <button class="btn btn--go btn--sm" id="askSend">Ask</button>
+    </div>
+  </aside>
+
+</div>
+
+<!-- Settings modal -->
+<div class="modal" id="settingsModal" role="dialog" aria-modal="true">
+  <div class="modal__panel">
+    <div class="modal__head">
+      <h2>API keys &amp; AI Router</h2>
+      <button class="btn btn--sm" id="closeSettings">Close</button>
+    </div>
+
+    <p style="color:var(--muted);font-size:.83rem;margin:0 0 16px">
+      Bring your own keys (BYOK). Keys are stored only in this browser's local storage and are sent directly
+      to each provider's own API — never to any Damsel server, because there isn't one in this demo build.
+    </p>
+
+    <div class="section-title">Providers</div>
+    <div id="providerRows"></div>
+
+    <div class="section-title">AI Router — which provider handles each task</div>
+    <table class="route-table">
+      <thead><tr><th>Task</th><th>Provider</th></tr></thead>
+      <tbody id="routeRows"></tbody>
+    </table>
+
+    <div class="section-title">Offline voice</div>
+    <p style="color:var(--muted);font-size:.82rem;margin:0">
+      "Browser voice" below uses your OS/browser's built-in offline speech engine — no key, no internet, works
+      right now. True downloadable Piper/Kokoro neural voices (higher quality, still fully offline) are on the
+      roadmap — see <code>docs/damsel-architecture.md</code> §5 for the design; wiring them in needs an
+      on-device ONNX runtime bundle, which is a separate follow-up piece of work.
+    </p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+/* ---------------- storage helpers ---------------- */
+var LS_KEYS = "damsel.apiKeys", LS_ROUTE = "damsel.route", LS_DOCS = "damsel.docsMeta";
+function loadJSON(k, fallback){ try{ var v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; }catch(e){ return fallback; } }
+function saveJSON(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+
+var PROVIDERS = ["openai","anthropic","gemini","elevenlabs"];
+var PROVIDER_LABEL = {openai:"OpenAI", anthropic:"Anthropic Claude", gemini:"Google Gemini", elevenlabs:"ElevenLabs (voice)"};
+var TASKS = [
+  {id:"summarize", label:"Summarize", textProviders:true},
+  {id:"explain", label:"Explain a passage", textProviders:true},
+  {id:"translate", label:"Translate", textProviders:true},
+  {id:"qa", label:"Ask questions about the book", textProviders:true},
+  {id:"voice", label:"Cloud voice", voiceProviders:true}
+];
+var DEFAULT_ROUTE = {summarize:"gemini", explain:"anthropic", translate:"gemini", qa:"openai", voice:"elevenlabs"};
+
+var apiKeys = loadJSON(LS_KEYS, {});
+var route = loadJSON(LS_ROUTE, DEFAULT_ROUTE);
+
+/* ---------------- toast ---------------- */
+var toastEl = document.getElementById("toast"), toastTimer;
+function toast(msg){
+  toastEl.textContent = msg; toastEl.classList.add("is-up");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ toastEl.classList.remove("is-up"); }, 3200);
+}
+
+/* ---------------- library / documents ---------------- */
+var docs = [];       // {id, name, kind, pages:[string,...]}
+var activeDoc = null;
+var seq = 0;
+
+function extOf(name){ var i = name.lastIndexOf("."); return i>-1 ? name.slice(i+1).toLowerCase() : ""; }
+
+function chunkIntoPages(text){
+  var CHUNK = 2200;
+  var clean = text.replace(/\r\n/g,"\n").replace(/\n{3,}/g,"\n\n").trim();
+  var paras = clean.split(/\n\s*\n/);
+  var pages = [], buf = "";
+  paras.forEach(function(p){
+    if((buf + "\n\n" + p).length > CHUNK && buf){ pages.push(buf); buf = p; }
+    else buf = buf ? buf + "\n\n" + p : p;
+  });
+  if(buf) pages.push(buf);
+  return pages.length ? pages : [clean || "(empty document)"];
+}
+
+function readAsText(file){
+  return new Promise(function(res,rej){
+    var r = new FileReader();
+    r.onload = function(){ res(r.result); };
+    r.onerror = rej;
+    r.readAsText(file);
+  });
+}
+function readAsArrayBuffer(file){
+  return new Promise(function(res,rej){
+    var r = new FileReader();
+    r.onload = function(){ res(r.result); };
+    r.onerror = rej;
+    r.readAsArrayBuffer(file);
+  });
+}
+
+function parsePDF(buf){
+  if(!window.pdfjsLib) return Promise.reject(new Error("PDF support didn't load (pdf.js failed to fetch from its CDN) — check your internet connection and reload."));
+  return pdfjsLib.getDocument({data:buf}).promise.then(function(pdf){
+    var pageTexts = [];
+    var chain = Promise.resolve();
+    var _loop = function(i){
+      chain = chain.then(function(){
+        return pdf.getPage(i).then(function(page){
+          return page.getTextContent().then(function(tc){
+            pageTexts[i-1] = tc.items.map(function(it){ return it.str; }).join(" ");
+          });
+        });
+      });
+    };
+    for(var i=1;i<=pdf.numPages;i++) _loop(i);
+    return chain.then(function(){ return pageTexts; });
+  });
+}
+
+function importFile(file){
+  var ext = extOf(file.name);
+  var job;
+  if(ext === "pdf"){
+    job = readAsArrayBuffer(file).then(parsePDF);
+  } else if(ext === "docx"){
+    if(!window.mammoth){
+      job = Promise.reject(new Error("DOCX support didn't load (mammoth.js failed to fetch from its CDN) — check your internet connection and reload."));
+    } else {
+      job = readAsArrayBuffer(file).then(function(buf){
+        return mammoth.extractRawText({arrayBuffer:buf}).then(function(r){ return chunkIntoPages(r.value); });
+      });
+    }
+  } else {
+    job = readAsText(file).then(chunkIntoPages);
+  }
+  toast("Importing " + file.name + "…");
+  job.then(function(pages){
+    var doc = {id: ++seq, name:file.name, kind:ext, pages:pages, page:0};
+    docs.push(doc);
+    renderDocList();
+    openDoc(doc.id);
+    toast(file.name + " imported — " + pages.length + " page" + (pages.length===1?"":"s"));
+  }).catch(function(err){
+    console.error(err);
+    toast("Couldn't read " + file.name + ": " + (err && err.message ? err.message : "unknown error"));
+  });
+}
+
+function renderDocList(){
+  var el = document.getElementById("docList");
+  if(!docs.length){ el.innerHTML = '<p class="empty-note">Nothing imported yet.</p>'; return; }
+  el.innerHTML = docs.map(function(d){
+    return '<div class="doc-item' + (activeDoc && activeDoc.id===d.id ? ' is-active' : '') + '" data-id="'+d.id+'">' +
+      '<span class="doc-item__name" data-open="'+d.id+'">'+ escapeHTML(d.name) +'</span>' +
+      '<button class="doc-item__del" data-del="'+d.id+'" aria-label="Remove">✕</button>' +
+    '</div>';
+  }).join("");
+}
+
+function escapeHTML(s){ return String(s).replace(/[<>&"]/g, function(c){ return {"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]; }); }
+
+function openDoc(id){
+  activeDoc = docs.find(function(d){ return d.id === id; }) || null;
+  renderDocList();
+  renderPage();
+}
+
+function renderPage(){
+  var body = document.getElementById("readerBody");
+  var title = document.getElementById("docTitle");
+  var meta = document.getElementById("docMeta");
+  if(!activeDoc){
+    title.textContent = "No document open";
+    meta.textContent = "";
+    body.innerHTML = '<div class="reader__placeholder"><b>Nothing open yet</b>Import a file on the left to start reading. Select any text to explain, translate, or hear it read aloud.</div>';
+    return;
+  }
+  title.textContent = activeDoc.name;
+  meta.textContent = "Page " + (activeDoc.page+1) + " of " + activeDoc.pages.length;
+  var text = activeDoc.pages[activeDoc.page] || "";
+  body.innerHTML = text.split(/\n\s*\n/).map(function(p){ return "<p>" + escapeHTML(p) + "</p>"; }).join("");
+}
+
+document.getElementById("docList").addEventListener("click", function(e){
+  var open = e.target.closest("[data-open]");
+  var del = e.target.closest("[data-del]");
+  if(del){
+    var id = Number(del.dataset.del);
+    docs = docs.filter(function(d){ return d.id !== id; });
+    if(activeDoc && activeDoc.id === id) activeDoc = null;
+    renderDocList(); renderPage();
+    return;
+  }
+  if(open) openDoc(Number(open.dataset.open));
+});
+
+/* ---------------- import wiring ---------------- */
+var drop = document.getElementById("drop"), fileInput = document.getElementById("fileInput");
+drop.addEventListener("click", function(){ fileInput.click(); });
+fileInput.addEventListener("change", function(){ if(fileInput.files[0]) importFile(fileInput.files[0]); fileInput.value=""; });
+["dragenter","dragover"].forEach(function(ev){ drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add("is-over"); }); });
+["dragleave","drop"].forEach(function(ev){ drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.remove("is-over"); }); });
+drop.addEventListener("drop", function(e){ e.preventDefault(); var f = e.dataTransfer.files[0]; if(f) importFile(f); });
+
+/* ---------------- provider abstraction (BYOK, direct-from-browser) ---------------- */
+var Providers = {
+  openai: {
+    chat: function(key, system, userText){
+      return fetch("https://api.openai.com/v1/chat/completions", {
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
+        body: JSON.stringify({model:"gpt-4o-mini", messages:[{role:"system",content:system},{role:"user",content:userText}]})
+      }).then(handleJSON).then(function(d){ return d.choices[0].message.content; });
+    }
+  },
+  anthropic: {
+    chat: function(key, system, userText){
+      return fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{
+          "Content-Type":"application/json",
+          "x-api-key": key,
+          "anthropic-version":"2023-06-01",
+          "anthropic-dangerous-direct-browser-access":"true"
+        },
+        body: JSON.stringify({model:"claude-sonnet-4-5", max_tokens:1024, system:system, messages:[{role:"user",content:userText}]})
+      }).then(handleJSON).then(function(d){ return d.content[0].text; });
+    }
+  },
+  gemini: {
+    chat: function(key, system, userText){
+      return fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key="+encodeURIComponent(key), {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          systemInstruction:{parts:[{text:system}]},
+          contents:[{role:"user", parts:[{text:userText}]}]
+        })
+      }).then(handleJSON).then(function(d){ return d.candidates[0].content.parts.map(function(p){return p.text;}).join(""); });
+    }
+  },
+  elevenlabs: {
+    tts: function(key, text, voiceId){
+      voiceId = voiceId || "21m00Tcm4TlvDq8ikWAM";
+      return fetch("https://api.elevenlabs.io/v1/text-to-speech/"+voiceId, {
+        method:"POST",
+        headers:{"Content-Type":"application/json","xi-api-key":key},
+        body: JSON.stringify({text:text, model_id:"eleven_multilingual_v2"})
+      }).then(function(r){ if(!r.ok) return r.text().then(function(t){throw new Error(t);}); return r.blob(); });
+    }
+  }
+};
+function handleJSON(r){
+  return r.text().then(function(t){
+    var data; try{ data = JSON.parse(t); }catch(e){ data = {}; }
+    if(!r.ok) throw new Error((data.error && (data.error.message||JSON.stringify(data.error))) || t || ("HTTP "+r.status));
+    return data;
+  });
+}
+
+function providerFor(taskId){
+  var p = route[taskId];
+  if(!p || !apiKeys[p]) return null;
+  return p;
+}
+
+function runTextTask(taskId, system, userText, onResult, onError){
+  var p = providerFor(taskId);
+  if(!p){ onError("No provider configured for this task (or its API key is missing). Open Settings and set one up."); return; }
+  var key = apiKeys[p];
+  Providers[p].chat(key, system, userText).then(onResult).catch(function(err){ onError(p + " error: " + err.message); });
+}
+
+/* ---------------- AI log (right rail) ---------------- */
+var aiLog = document.getElementById("aiLog");
+function logMsg(role, text){
+  var div = document.createElement("div");
+  div.className = "msg msg--" + role;
+  if(role !== "sys"){
+    var meta = document.createElement("div");
+    meta.className = "msg__meta";
+    meta.textContent = role === "user" ? "You" : "Damsel";
+    div.appendChild(meta);
+  }
+  var body = document.createElement("div");
+  body.textContent = text;
+  div.appendChild(body);
+  aiLog.appendChild(div);
+  aiLog.scrollTop = aiLog.scrollHeight;
+  return div;
+}
+
+document.getElementById("askSend").addEventListener("click", askAboutDoc);
+document.getElementById("askInput").addEventListener("keydown", function(e){
+  if(e.key === "Enter" && !e.shiftKey){ e.preventDefault(); askAboutDoc(); }
+});
+function askAboutDoc(){
+  var input = document.getElementById("askInput");
+  var q = input.value.trim();
+  if(!q) return;
+  if(!activeDoc){ logMsg("sys", "Open a document first."); return; }
+  input.value = "";
+  logMsg("user", q);
+  var thinking = logMsg("ai", "…thinking");
+  var context = activeDoc.pages[activeDoc.page];
+  var system = "You are Damsel, a helpful reading companion. Answer the user's question using the provided page of the document as context. If the answer isn't in this page, say so plainly.";
+  runTextTask("qa", system, "DOCUMENT PAGE:\n" + context + "\n\nQUESTION: " + q,
+    function(answer){ thinking.querySelector("div:last-child").textContent = answer; },
+    function(err){ thinking.querySelector("div:last-child").textContent = err; thinking.classList.add("msg--sys"); }
+  );
+}
+
+/* ---------------- toolbar actions ---------------- */
+document.getElementById("actSummarizePage").addEventListener("click", function(){
+  if(!activeDoc) return toast("Open a document first");
+  var thinking = logMsg("ai", "Summarizing this page…");
+  runTextTask("summarize", "You are Damsel. Summarize the following page in 3-5 concise sentences.", activeDoc.pages[activeDoc.page],
+    function(res){ thinking.querySelector("div:last-child").textContent = res; },
+    function(err){ thinking.querySelector("div:last-child").textContent = err; }
+  );
+});
+
+var selectionText = "";
+document.getElementById("readerBody").addEventListener("mouseup", function(){
+  var s = window.getSelection().toString().trim();
+  selectionText = s;
+  document.getElementById("actSummarizeSelection").disabled = !s;
+  document.getElementById("actTranslateSelection").disabled = !s;
+});
+
+document.getElementById("actSummarizeSelection").addEventListener("click", function(){
+  if(!selectionText) return;
+  var thinking = logMsg("ai", "Explaining selection…");
+  runTextTask("explain", "You are Damsel. Explain the following passage clearly and simply, as if to someone unfamiliar with the topic.", selectionText,
+    function(res){ thinking.querySelector("div:last-child").textContent = res; },
+    function(err){ thinking.querySelector("div:last-child").textContent = err; }
+  );
+});
+document.getElementById("actTranslateSelection").addEventListener("click", function(){
+  if(!selectionText) return;
+  var thinking = logMsg("ai", "Translating selection…");
+  runTextTask("translate", "You are Damsel. Translate the following passage to English if it isn't already in English; otherwise translate it to Spanish. Return only the translation.", selectionText,
+    function(res){ thinking.querySelector("div:last-child").textContent = res; },
+    function(err){ thinking.querySelector("div:last-child").textContent = err; }
+  );
+});
+
+/* ---------------- voice: offline (browser TTS) + cloud (ElevenLabs) ---------------- */
+var synth = window.speechSynthesis;
+var voiceSelect = document.getElementById("voiceSelect");
+function populateVoices(){
+  var opts = ['<option value="browser">Browser voice (offline)</option>'];
+  if(apiKeys.elevenlabs) opts.push('<option value="elevenlabs">ElevenLabs (cloud)</option>');
+  voiceSelect.innerHTML = opts.join("");
+}
+populateVoices();
+
+var currentAudio = null;
+document.getElementById("actSpeak").addEventListener("click", function(){
+  var text = selectionText || (activeDoc ? activeDoc.pages[activeDoc.page] : "");
+  if(!text) return toast("Nothing to read — open a document or select some text");
+  var mode = voiceSelect.value;
+  document.getElementById("actSpeak").style.display = "none";
+  document.getElementById("actStop").style.display = "inline-block";
+
+  if(mode === "elevenlabs" && apiKeys.elevenlabs){
+    toast("Generating cloud voice…");
+    Providers.elevenlabs.tts(apiKeys.elevenlabs, text.slice(0,2500)).then(function(blob){
+      currentAudio = new Audio(URL.createObjectURL(blob));
+      currentAudio.onended = resetSpeakButton;
+      currentAudio.play();
+    }).catch(function(err){ toast("ElevenLabs error: " + err.message); resetSpeakButton(); });
+    return;
+  }
+
+  if(!synth){ toast("This browser has no built-in speech engine"); resetSpeakButton(); return; }
+  var utter = new SpeechSynthesisUtterance(text.slice(0,4000));
+  utter.onend = resetSpeakButton;
+  utter.onerror = resetSpeakButton;
+  synth.cancel();
+  synth.speak(utter);
+});
+function resetSpeakButton(){
+  document.getElementById("actSpeak").style.display = "inline-block";
+  document.getElementById("actStop").style.display = "none";
+}
+document.getElementById("actStop").addEventListener("click", function(){
+  if(synth) synth.cancel();
+  if(currentAudio){ currentAudio.pause(); currentAudio = null; }
+  resetSpeakButton();
+});
+
+/* ---------------- settings modal ---------------- */
+var modal = document.getElementById("settingsModal");
+document.getElementById("openSettings").addEventListener("click", function(){ renderSettings(); modal.classList.add("is-open"); });
+document.getElementById("closeSettings").addEventListener("click", function(){ modal.classList.remove("is-open"); });
+modal.addEventListener("click", function(e){ if(e.target === modal) modal.classList.remove("is-open"); });
+
+function renderSettings(){
+  var rows = document.getElementById("providerRows");
+  rows.innerHTML = PROVIDERS.map(function(p){
+    var has = !!apiKeys[p];
+    return '<div class="provider-row">' +
+      '<div class="field" style="margin-bottom:0">' +
+        '<label>' + PROVIDER_LABEL[p] + '</label>' +
+        '<input type="password" data-key="'+p+'" placeholder="Paste API key…" value="'+ (apiKeys[p] ? apiKeys[p] : "") +'">' +
+      '</div>' +
+      '<span class="pill ' + (has ? "ok" : "warn") + '">' + (has ? "Connected" : "Not set") + '</span>' +
+    '</div>';
+  }).join("");
+
+  var body = document.getElementById("routeRows");
+  body.innerHTML = TASKS.map(function(t){
+    var opts = PROVIDERS.filter(function(p){
+      if(t.voiceProviders) return p === "elevenlabs";
+      return p !== "elevenlabs";
+    }).map(function(p){
+      return '<option value="'+p+'"' + (route[t.id]===p?" selected":"") + '>' + PROVIDER_LABEL[p] + '</option>';
+    }).join("");
+    return '<tr><td>'+t.label+'</td><td><select data-task="'+t.id+'">'+opts+'</select></td></tr>';
+  }).join("");
+
+  rows.querySelectorAll("[data-key]").forEach(function(inp){
+    inp.addEventListener("change", function(){
+      var p = inp.dataset.key, v = inp.value.trim();
+      if(v) apiKeys[p] = v; else delete apiKeys[p];
+      saveJSON(LS_KEYS, apiKeys);
+      populateVoices();
+      renderSettings();
+    });
+  });
+  body.querySelectorAll("[data-task]").forEach(function(sel){
+    sel.addEventListener("change", function(){
+      route[sel.dataset.task] = sel.value;
+      saveJSON(LS_ROUTE, route);
+    });
+  });
+}
+
+renderDocList();
+renderPage();
+})();
+</script>
+</body>
+</html>
