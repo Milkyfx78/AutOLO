@@ -154,7 +154,7 @@ fun ReaderScreen(
 }
 
 @Composable
-private fun ReaderToolbar(
+internal fun ReaderToolbar(
     canGoBack: Boolean,
     canGoForward: Boolean,
     onPrev: () -> Unit,

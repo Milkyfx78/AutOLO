@@ -97,7 +97,7 @@ fun LibraryScreen(
 }
 
 @Composable
-private fun EmptyLibrary(modifier: Modifier = Modifier) {
+internal fun EmptyLibrary(modifier: Modifier = Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(
             Icons.Filled.MenuBook,
@@ -115,7 +115,7 @@ private fun EmptyLibrary(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun BookRow(book: BookEntity, onClick: () -> Unit) {
+internal fun BookRow(book: BookEntity, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -137,7 +137,7 @@ private fun BookRow(book: BookEntity, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ImportingRow() {
+internal fun ImportingRow() {
     Row(
         Modifier.fillMaxWidth().padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
