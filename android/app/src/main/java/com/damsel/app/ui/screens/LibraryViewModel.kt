@@ -68,4 +68,8 @@ class LibraryViewModel @Inject constructor(
     fun dismissError() {
         _importState.value = ImportState.Idle
     }
+
+    fun setGenre(bookId: String, genre: String?) {
+        viewModelScope.launch { bookDao.setGenre(bookId, genre) }
+    }
 }

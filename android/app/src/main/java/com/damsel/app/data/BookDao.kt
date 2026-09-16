@@ -31,4 +31,16 @@ interface BookDao {
 
     @Query("SELECT * FROM reading_progress WHERE bookId = :bookId")
     suspend fun getProgress(bookId: String): ReadingProgressEntity?
+
+    @Query("UPDATE books SET genre = :genre WHERE id = :bookId")
+    suspend fun setGenre(bookId: String, genre: String?)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertHighlight(highlight: HighlightEntity)
+
+    @Query("DELETE FROM highlights WHERE id = :id")
+    suspend fun deleteHighlight(id: String)
+
+    @Query("SELECT * FROM highlights WHERE bookId = :bookId AND pageIndex = :pageIndex ORDER BY startOffset")
+    fun observeHighlights(bookId: String, pageIndex: Int): Flow<List<HighlightEntity>>
 }

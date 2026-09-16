@@ -1,5 +1,7 @@
 package com.damsel.app.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,19 +12,34 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -31,21 +48,27 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.damsel.app.data.HighlightColor
+import com.damsel.app.data.HighlightEntity
+import com.damsel.app.voice.DamselVoice
 import com.damsel.app.voice.VoiceEmotion
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,15 +81,18 @@ fun ReaderScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showAsk by rememberSaveable { mutableStateOf(false) }
     var showVoiceStudio by rememberSaveable { mutableStateOf(false) }
+    var showHighlights by rememberSaveable { mutableStateOf(false) }
+    var showNoteDialogColor by remember { mutableStateOf<HighlightColor?>(null) }
 
     remember(bookId) { viewModel.load(bookId); true }
 
     val pageText = state.pages.getOrNull(state.currentPage).orEmpty()
-    var fieldValue by remember(state.currentPage, pageText) { mutableStateOf(TextFieldValue(pageText)) }
-    val selectedText = fieldValue.text.substring(
-        minOf(fieldValue.selection.min, fieldValue.text.length),
-        minOf(fieldValue.selection.max, fieldValue.text.length)
-    )
+    var fieldValue by remember(state.currentPage, pageText, state.highlights) {
+        mutableStateOf(TextFieldValue(annotatedPage(pageText, state.highlights)))
+    }
+    val selectionStart = minOf(fieldValue.selection.min, fieldValue.text.length)
+    val selectionEnd = minOf(fieldValue.selection.max, fieldValue.text.length)
+    val selectedText = fieldValue.text.substring(selectionStart, selectionEnd)
 
     Scaffold(
         topBar = {
@@ -88,6 +114,9 @@ fun ReaderScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showHighlights = true }) {
+                        Icon(Icons.Filled.AutoAwesome, contentDescription = "Highlights on this page")
+                    }
                     IconButton(onClick = { showVoiceStudio = true }) {
                         Icon(Icons.Filled.GraphicEq, contentDescription = "Voice Studio")
                     }
@@ -95,16 +124,29 @@ fun ReaderScreen(
             )
         },
         bottomBar = {
-            ReaderToolbar(
-                canGoBack = state.currentPage > 0,
-                canGoForward = state.currentPage < state.pages.size - 1,
-                onPrev = { viewModel.goToPage(state.currentPage - 1) },
-                onNext = { viewModel.goToPage(state.currentPage + 1) },
-                speech = state.speech,
-                onSpeak = viewModel::speakCurrentPage,
-                onStop = viewModel::stopSpeaking,
-                onAsk = { showAsk = true }
-            )
+            Column {
+                if (state.speech !is SpeechState.Idle) {
+                    PlayerBar(state = state, viewModel = viewModel)
+                }
+                if (selectedText.isNotBlank()) {
+                    HighlightActionRow(
+                        onPickColor = { color ->
+                            viewModel.addHighlight(selectionStart, selectionEnd, selectedText, color, note = null)
+                        },
+                        onAddNote = { color -> showNoteDialogColor = color }
+                    )
+                }
+                ReaderToolbar(
+                    canGoBack = state.currentPage > 0,
+                    canGoForward = state.currentPage < state.pages.size - 1,
+                    onPrev = { viewModel.goToPage(state.currentPage - 1) },
+                    onNext = { viewModel.goToPage(state.currentPage + 1) },
+                    speech = state.speech,
+                    onSpeak = viewModel::speakCurrentPage,
+                    onStop = viewModel::stopSpeaking,
+                    onAsk = { showAsk = true }
+                )
+            }
         }
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
@@ -123,7 +165,7 @@ fun ReaderScreen(
                 ) {
                     BasicTextField(
                         value = fieldValue,
-                        onValueChange = { fieldValue = it },
+                        onValueChange = { fieldValue = fieldValue.copy(selection = it.selection) },
                         readOnly = true,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(
                             color = MaterialTheme.colorScheme.onBackground
@@ -151,6 +193,222 @@ fun ReaderScreen(
             onDismiss = { showAsk = false; viewModel.dismissAsk() }
         )
     }
+
+    if (showHighlights) {
+        HighlightsSheet(
+            highlights = state.highlights,
+            onDelete = viewModel::deleteHighlight,
+            onDismiss = { showHighlights = false }
+        )
+    }
+
+    showNoteDialogColor?.let { color ->
+        HighlightNoteDialog(
+            color = color,
+            onSave = { note ->
+                viewModel.addHighlight(selectionStart, selectionEnd, selectedText, color, note)
+                showNoteDialogColor = null
+            },
+            onDismiss = { showNoteDialogColor = null }
+        )
+    }
+}
+
+private fun annotatedPage(text: String, highlights: List<HighlightEntity>) = buildAnnotatedString {
+    append(text)
+    highlights.forEach { h ->
+        val color = runCatching { HighlightColor.valueOf(h.color) }.getOrDefault(HighlightColor.YELLOW)
+        val start = h.startOffset.coerceIn(0, text.length)
+        val end = h.endOffset.coerceIn(start, text.length)
+        if (end > start) addStyle(SpanStyle(background = Color(color.argb).copy(alpha = 0.55f)), start, end)
+    }
+}
+
+@Composable
+private fun HighlightActionRow(onPickColor: (HighlightColor) -> Unit, onAddNote: (HighlightColor) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text("Highlight:", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 8.dp))
+        HighlightColor.entries.forEach { color ->
+            Box(
+                Modifier
+                    .padding(top = 4.dp)
+                    .size(24.dp)
+                    .background(Color(color.argb), CircleShape)
+                    .clickable { onPickColor(color) }
+            )
+        }
+        Spacer(Modifier.size(4.dp))
+        AssistChip(onClick = { onAddNote(HighlightColor.YELLOW) }, label = { Text("+ Note") })
+    }
+}
+
+@Composable
+private fun HighlightNoteDialog(color: HighlightColor, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    var note by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add a note") },
+        text = {
+            OutlinedTextField(
+                value = note,
+                onValueChange = { note = it },
+                label = { Text("What's worth remembering here?") },
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = { Button(onClick = { onSave(note) }) { Text("Save highlight") } },
+        dismissButton = { Button(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HighlightsSheet(highlights: List<HighlightEntity>, onDelete: (String) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(24.dp)) {
+            Text("Highlights on this page", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(12.dp))
+            if (highlights.isEmpty()) {
+                Text(
+                    "Select some text and pick a color to highlight it.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                highlights.forEach { h ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            Modifier
+                                .size(14.dp)
+                                .padding(top = 4.dp)
+                                .then(Modifier.background(Color(runCatching { HighlightColor.valueOf(h.color) }.getOrDefault(HighlightColor.YELLOW).argb)))
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text("“${h.quotedText.take(140)}”", style = MaterialTheme.typography.bodyMedium)
+                            h.note?.let {
+                                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        IconButton(onClick = { onDelete(h.id) }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Remove highlight")
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun PlayerBar(state: ReaderUiState, viewModel: ReaderViewModel) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        if (state.speech is SpeechState.Failed) {
+            Text(
+                state.speech.message,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            return@Column
+        }
+
+        Slider(
+            value = state.playbackPositionMs.toFloat().coerceAtMost(state.playbackDurationMs.toFloat().coerceAtLeast(1f)),
+            onValueChange = { viewModel.seekTo(it.toInt()) },
+            valueRange = 0f..state.playbackDurationMs.toFloat().coerceAtLeast(1f),
+            enabled = state.speech is SpeechState.Playing || state.speech is SpeechState.Paused
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(formatMs(state.playbackPositionMs), style = MaterialTheme.typography.labelSmall)
+            Text(formatMs(state.playbackDurationMs), style = MaterialTheme.typography.labelSmall)
+        }
+
+        Row(
+            Modifier.fillMaxWidth().padding(top = 4.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = { viewModel.skip(-10_000) }) {
+                Icon(Icons.Filled.Replay10, contentDescription = "Back 10 seconds")
+            }
+            when (state.speech) {
+                is SpeechState.Generating -> CircularProgressIndicator(Modifier.padding(horizontal = 20.dp).size(28.dp))
+                is SpeechState.Playing -> IconButton(onClick = viewModel::togglePlayPause) {
+                    Icon(Icons.Filled.Pause, contentDescription = "Pause", modifier = Modifier.size(32.dp))
+                }
+                is SpeechState.Paused -> IconButton(onClick = viewModel::togglePlayPause) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = "Resume", modifier = Modifier.size(32.dp))
+                }
+                else -> Unit
+            }
+            IconButton(onClick = { viewModel.skip(10_000) }) {
+                Icon(Icons.Filled.Forward10, contentDescription = "Forward 10 seconds")
+            }
+            IconButton(onClick = viewModel::stopSpeaking) {
+                Icon(Icons.Filled.Stop, contentDescription = "Stop")
+            }
+        }
+
+        Row(
+            Modifier.fillMaxWidth().padding(top = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                PLAYBACK_SPEEDS.forEach { speed ->
+                    FilterChip(
+                        selected = state.playbackSpeed == speed,
+                        onClick = { viewModel.setPlaybackSpeed(speed) },
+                        label = { Text("${speed}x") }
+                    )
+                }
+            }
+            SleepTimerButton(
+                minutesRemaining = state.sleepTimerMinutesRemaining,
+                onSet = viewModel::setSleepTimer
+            )
+        }
+    }
+}
+
+@Composable
+private fun SleepTimerButton(minutesRemaining: Int?, onSet: (Int?) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        AssistChip(
+            onClick = { if (minutesRemaining != null) onSet(null) else expanded = true },
+            leadingIcon = {
+                Icon(
+                    if (minutesRemaining != null) Icons.Filled.Cancel else Icons.Filled.Bedtime,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+            },
+            label = { Text(minutesRemaining?.let { "End in ${it}m" } ?: "Sleep timer") }
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            listOf(10, 15, 30, 45, 60).forEach { minutes ->
+                DropdownMenuItem(
+                    text = { Text("$minutes minutes") },
+                    onClick = { onSet(minutes); expanded = false }
+                )
+            }
+        }
+    }
+}
+
+private fun formatMs(ms: Int): String {
+    val totalSeconds = ms / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "%d:%02d".format(minutes, seconds)
 }
 
 @Composable
@@ -176,12 +434,8 @@ internal fun ReaderToolbar(
             Spacer(Modifier.size(6.dp))
             Text("Ask Damsel")
         }
-        when (speech) {
-            is SpeechState.Generating -> CircularProgressIndicator(Modifier.size(24.dp))
-            is SpeechState.Playing -> IconButton(onClick = onStop) {
-                Icon(Icons.Filled.Stop, contentDescription = "Stop")
-            }
-            else -> IconButton(onClick = onSpeak) {
+        if (speech is SpeechState.Idle) {
+            IconButton(onClick = onSpeak) {
                 Icon(Icons.Filled.PlayArrow, contentDescription = "Read aloud")
             }
         }
@@ -189,44 +443,71 @@ internal fun ReaderToolbar(
             Icon(Icons.Filled.ChevronRight, contentDescription = "Next page")
         }
     }
-    if (speech is SpeechState.Failed) {
-        Text(
-            speech.message,
-            color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-        )
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VoiceStudioSheet(
     state: ReaderUiState,
-    onSelectVoice: (com.damsel.app.voice.DamselVoice) -> Unit,
+    onSelectVoice: (DamselVoice) -> Unit,
     onSelectEmotion: (VoiceEmotion) -> Unit,
     onDismiss: () -> Unit
 ) {
+    var query by remember { mutableStateOf("") }
+    val filteredVoices = state.voices.filter {
+        query.isBlank() || it.displayName.contains(query, ignoreCase = true) || it.description.contains(query, ignoreCase = true)
+    }
+
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(24.dp)) {
             Text("Voice Studio", style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(16.dp))
-            Text("Voice", style = MaterialTheme.typography.labelSmall)
-            Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                state.voices.forEach { voice ->
-                    FilterChip(
-                        selected = state.selectedVoice?.id == voice.id,
-                        onClick = { onSelectVoice(voice) },
-                        label = { Text(voice.displayName) }
-                    )
+            Spacer(Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text("Search voices") },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(12.dp))
+
+            LazyColumn(modifier = Modifier.height(220.dp)) {
+                items(filteredVoices, key = { it.id }) { voice ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
+                            .clickable { onSelectVoice(voice) },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        FilterChip(
+                            selected = state.selectedVoice?.id == voice.id,
+                            onClick = { onSelectVoice(voice) },
+                            label = { Text(voice.displayName) }
+                        )
+                        Column {
+                            Text(voice.description, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                if (filteredVoices.isEmpty()) {
+                    item {
+                        Text(
+                            "No voices match “$query”.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 16.dp)
+                        )
+                    }
                 }
             }
+
             Spacer(Modifier.height(12.dp))
             Text("Emotion", style = MaterialTheme.typography.labelSmall)
-            Row(
-                Modifier.padding(vertical = 8.dp).fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 VoiceEmotion.entries.take(3).forEach { emotion ->
                     FilterChip(
                         selected = state.emotion == emotion,
@@ -244,10 +525,18 @@ private fun VoiceStudioSheet(
                     )
                 }
             }
-            Spacer(Modifier.height(24.dp))
+
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "More voices (200+, multiple languages) plug in as additional BYOK providers — see docs/damsel-master-spec.md §14/§20. Only OpenAI's 6 voices are wired up today.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(16.dp))
         }
     }
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -65,6 +65,8 @@ class OpenAiVoiceProvider @Inject constructor(
             }
         } catch (e: IOException) {
             Result.failure(IOException("Couldn't reach the voice service — check your connection.", e))
+        } catch (e: Exception) {
+            Result.failure(IOException("Damsel couldn't generate that voice segment.", e))
         }
     }
 }

@@ -62,6 +62,8 @@ class OpenAiProvider @Inject constructor(
                 }
             } catch (e: IOException) {
                 Result.failure(IOException("Couldn't reach OpenAI — check your connection.", e))
+            } catch (e: Exception) {
+                Result.failure(IOException("OpenAI sent back something Damsel didn't understand.", e))
             }
         }
 }

@@ -21,7 +21,11 @@ object AppModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): DamselDatabase =
-        Room.databaseBuilder(context, DamselDatabase::class.java, "damsel.db").build()
+        Room.databaseBuilder(context, DamselDatabase::class.java, "damsel.db")
+            // Pre-release schema; destructive fallback is an accepted trade-off until this
+            // app has real users with data worth writing a migration path for.
+            .fallbackToDestructiveMigration()
+            .build()
 
     @Provides
     @Singleton

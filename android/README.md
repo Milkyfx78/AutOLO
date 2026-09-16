@@ -36,15 +36,36 @@ paste an OpenAI API key — that one key powers both Ask Damsel and voice narrat
 - Both **AiRouter** and **VoiceRouter** exist as real abstractions between the UI and the concrete
   OpenAI adapters (spec §20/§21, Rules 5–6) — adding Anthropic/Gemini/ElevenLabs later means adding
   an adapter class and registering it in the router's provider list, not touching any screen.
+- **Highlights** (spec §38) are real Room rows tied to an exact text range, rendered back as colored
+  spans over the page text — pick a color after selecting text, add an optional note, view/delete
+  them from the highlights icon in the top bar.
+- **Audio player controls**: seek bar, ±10s skip, pause/resume, five speed presets (0.75x–2x
+  applied live via `MediaPlayer.PlaybackParams`), and a real sleep timer that stops narration and
+  counts down on-screen — not decoration, all wired to the actual `MediaPlayer` instance.
+- **Genre tags** on your own library (long-press a book to tag it, filter chips at the top of your
+  shelf) — this is deliberately *not* a fake book-discovery/catalog screen; there's no content
+  backend behind it, just organizing what you've actually imported.
 
 ## What's intentionally not here yet
 
 This is Stage 1–4's vertical slice only (spec §87). Not yet built: EPUB/DOCX import, the full
-10-voice library and Voice Studio emotion matrix, highlights/notes/bookmarks, the research
-workspace, learning system (flashcards/quizzes), gamification, social/clubs, cloud sync, and the
-backend services section 69–72 describes. The module boundaries (`ai/`, `voice/`, `data/`,
-`ui/screens/`) are laid out so those become additions, not a rewrite, and match the eventual
-`core/`+`feature/` structure in spec §5 once the app outgrows a single module.
+10-voice library (only OpenAI's 6 voices are wired up — the Voice Studio sheet says so), bookmarks
+and free-form notes, the research workspace, learning system (flashcards/quizzes), gamification,
+social/clubs, cloud sync, and the backend services section 69–72 describes. A real book-discovery
+catalog (browse-by-genre with cover art, like a bookstore) needs a content backend and hasn't been
+built — see the genre-tagging note above for the honest, scoped-down version that ships instead.
+The module boundaries (`ai/`, `voice/`, `data/`, `ui/screens/`) are laid out so those become
+additions, not a rewrite, and match the eventual `core/`+`feature/` structure in spec §5 once the
+app outgrows a single module.
+
+## Fixed: crash on "read aloud"
+
+An earlier build could crash the whole app instead of showing an error when narration playback hit
+a bad audio response — `MediaPlayer.setDataSource()`/`prepareAsync()` were called with no
+try/catch inside a coroutine, so any failure there had nowhere safe to land and took the app down
+with it. `ReaderViewModel.playAudio()` now wraps all of that, and the OpenAI provider/voice
+adapters catch `Exception` broadly (not just `IOException`) so an unexpected response shape ends in
+a plain on-screen error instead of a crash.
 
 ## Known trade-off
 

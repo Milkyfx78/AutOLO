@@ -4,7 +4,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -12,6 +14,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -152,6 +157,68 @@ class ScreenshotTest {
                             textStyle = MaterialTheme.typography.bodyLarge.copy(
                                 color = MaterialTheme.colorScheme.onBackground
                             )
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Test
+    fun readerPageWithHighlight() {
+        paparazzi.snapshot {
+            DamselTheme {
+                val pageText = "“In vain have I struggled. It will not do. My feelings will not be repressed. " +
+                    "You must allow me to tell you how ardently I admire and love you.”\n\n" +
+                    "Elizabeth's astonishment was beyond expression."
+                val annotated = androidx.compose.ui.text.buildAnnotatedString {
+                    append(pageText)
+                    addStyle(
+                        androidx.compose.ui.text.SpanStyle(
+                            background = androidx.compose.ui.graphics.Color(com.damsel.app.data.HighlightColor.YELLOW.argb).copy(alpha = 0.55f)
+                        ),
+                        pageText.indexOf("My feelings"),
+                        pageText.indexOf("love you.") + "love you.".length
+                    )
+                }
+                var fieldValue by remember { mutableStateOf(TextFieldValue(annotated)) }
+                Scaffold(
+                    topBar = {
+                        TopAppBar(title = { Text("pride_and_prejudice.pdf", maxLines = 1) })
+                    },
+                    bottomBar = {
+                        Column {
+                            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                androidx.compose.material3.Slider(value = 42f, onValueChange = {}, valueRange = 0f..120f)
+                                androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween) {
+                                    Text("0:42", style = MaterialTheme.typography.labelSmall)
+                                    Text("2:00", style = MaterialTheme.typography.labelSmall)
+                                }
+                                androidx.compose.foundation.layout.Row(
+                                    Modifier.fillMaxWidth().padding(top = 4.dp),
+                                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+                                ) {
+                                    Icon(androidx.compose.material.icons.Icons.Filled.Replay10, contentDescription = null, modifier = Modifier.padding(horizontal = 16.dp))
+                                    Icon(androidx.compose.material.icons.Icons.Filled.Pause, contentDescription = null, modifier = Modifier.size(32.dp))
+                                    Icon(androidx.compose.material.icons.Icons.Filled.Forward10, contentDescription = null, modifier = Modifier.padding(horizontal = 16.dp))
+                                }
+                            }
+                            ReaderToolbar(
+                                canGoBack = true, canGoForward = true, onPrev = {}, onNext = {},
+                                speech = SpeechState.Playing, onSpeak = {}, onStop = {}, onAsk = {}
+                            )
+                        }
+                    }
+                ) { padding ->
+                    Column(
+                        Modifier.fillMaxSize().padding(padding).padding(horizontal = 24.dp, vertical = 16.dp)
+                    ) {
+                        BasicTextField(
+                            value = fieldValue,
+                            onValueChange = { fieldValue = it },
+                            readOnly = true,
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onBackground)
                         )
                     }
                 }

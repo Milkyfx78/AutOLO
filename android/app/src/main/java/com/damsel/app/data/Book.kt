@@ -14,7 +14,15 @@ data class BookEntity(
     val title: String,
     val uri: String,
     val pageCount: Int,
-    val importedAt: Long
+    val importedAt: Long,
+    /** User-assigned, e.g. "Romance", "Sci-Fi" — powers the mood/genre filter chips on Library. */
+    val genre: String? = null
+)
+
+/** Presets offered when tagging a book — the user's own shelf, not a fetched catalog. */
+val BOOK_GENRE_PRESETS = listOf(
+    "Romance", "Fantasy", "Sci-Fi", "Mystery", "Thriller",
+    "Non-fiction", "Business", "Academic", "Self-help", "Biography"
 )
 
 /** Real reading position — the only source of truth for "where the user left off" (spec §42). */
