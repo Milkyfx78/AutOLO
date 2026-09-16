@@ -3,6 +3,7 @@ package com.damsel.app.di
 import android.content.Context
 import androidx.room.Room
 import com.damsel.app.data.DamselDatabase
+import com.damsel.app.data.MIGRATION_1_2
 import com.damsel.app.data.PdfTextExtractor
 import com.damsel.app.data.SecureKeyStore
 import dagger.Module
@@ -22,9 +23,7 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): DamselDatabase =
         Room.databaseBuilder(context, DamselDatabase::class.java, "damsel.db")
-            // Pre-release schema; destructive fallback is an accepted trade-off until this
-            // app has real users with data worth writing a migration path for.
-            .fallbackToDestructiveMigration()
+            .addMigrations(MIGRATION_1_2)
             .build()
 
     @Provides
